@@ -22,10 +22,10 @@ app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = 'Cindy1648'
 app.config['MYSQL_DB'] = 'campaigns'
 
-app.config['S3_BUCKET'] = "teleeza-pilot"
-app.config['S3_KEY'] = "AKIAWQ63TTT7NWIPJMMQ"
-app.config['S3_SECRET'] = "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"
-app.config['S3_LOCATION'] = 'https://s3.us-east-2.amazonaws.com/teleeza-pilot/'
+app.config['S3_BUCKET'] = "bucket"
+app.config['S3_KEY'] = "ACCESS KEY"
+app.config['S3_SECRET'] = "SECRET KEY"
+app.config['S3_LOCATION'] = 'https://s3..amazonaws.com/'
 
 mysql = MySQL(app)
 
@@ -64,13 +64,13 @@ def add_blog():
         age_group = form['age_group']
         heading = form['heading']
         phone = form['phone']
-        bucket = 'teleeza-pilot'
+        bucket = 'bucket'
         content_type = request.mimetype
         thumbnail = request.files['thumbnail_url']
         if thumbnail and allowed_file(thumbnail.filename):
             client = boto3.client('s3',
-                                  region_name='us-east-2',
-                                  endpoint_url='https://s3.us-east-2.amazonaws.com',
+                                  region_name='us-east',
+                                  endpoint_url='https://s3..amazonaws.com',
                                   aws_access_key_id=app.config['S3_KEY'],
                                   aws_secret_access_key=app.config['S3_SECRET'])
 

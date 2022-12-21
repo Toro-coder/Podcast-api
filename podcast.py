@@ -20,10 +20,10 @@ app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = 'Cindy1648'
 app.config['MYSQL_DB'] = 'campaigns'
 
-app.config['S3_BUCKET'] = "teleeza-pilot"
-app.config['S3_KEY'] = "AKIAWQ63TTT7NWIPJMMQ"
-app.config['S3_SECRET'] = "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"
-app.config['S3_LOCATION'] = 'https://s3.us-east-2.amazonaws.com/teleeza-pilot/'
+app.config['S3_BUCKET'] = "bucket"
+app.config['S3_KEY'] = "ACCESS KEY"
+app.config['S3_SECRET'] = "SECRET KEY"
+app.config['S3_LOCATION'] = 'https://s3..amazonaws.com/'
 
 mysql = MySQL(app)
 
@@ -37,13 +37,13 @@ def file_upload():
         title = form['title']
         descriptions = form['descriptions']
         phone = form['phone']
-        bucket = 'teleeza-pilot'
+        bucket = 'bucket'
         content_type = request.mimetype
         audio = request.files['audio_url']
         if audio and allowed_file(audio.filename):
             client = boto3.client('s3',
-                                  region_name='us-east-2',
-                                  endpoint_url='https://s3.us-east-2.amazonaws.com',
+                                  region_name='us-east',
+                                  endpoint_url='https://s3.amazonaws.com',
                                   aws_access_key_id=app.config['S3_KEY'],
                                   aws_secret_access_key=app.config['S3_SECRET'])
 
@@ -77,8 +77,8 @@ def file_display():
     phone = form['phone']
     if phone:
         cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute('SELECT title, descriptions ,genre, audio_url, created_on FROM podcast WHERE phone = %s and flag = 1',
-                       (phone,))
+        cursor.execute('SELECT title, descriptions ,genre, audio_url, created_on FROM podcast WHERE phone = %s and '
+                       'flag = 1', (phone,))
         account = cursor.fetchall()
         if account:
             return jsonify(account)
@@ -128,11 +128,13 @@ def update():
         filename = app.config['S3_LOCATION'] + filename
         cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute('UPDATE podcast SET  genre = % s, age_group = % s, title = % s, descriptions = % s, audio_url '
-                       '= % s, updated_on = NOW() WHERE id = % s', (genre, age_group, title, descriptions, filename, id))
+                       '= % s, updated_on = NOW() WHERE id = % s',
+                       (genre, age_group, title, descriptions, filename, id))
         mysql.connection.commit()
         return 'Congratulations, You have successfully updated your file'
     else:
         return 'Sorry, Something went wrong'
+
 
 @app.route('/delete', methods=['POST', 'GET'])
 def delete():
