@@ -2,10 +2,10 @@ from flask import Flask, request, jsonify
 from flask_mysqldb import MySQL
 import MySQLdb.cursors
 import os
+import boto3
 from werkzeug.utils import secure_filename
 
-UPLOAD_FOLDER = 'C:/Users/KIM/PycharmProjects/podcast-api/files/'
-ALLOWED_EXTENSIONS = set(['jpg', 'jpeg', 'png', 'gif', 'mp3', 'mpeg'])
+ALLOWED_EXTENSIONS = set(['mp3'])
 
 
 def allowed_file(filename):
@@ -13,13 +13,17 @@ def allowed_file(filename):
 
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_ROOT'] = '3306'
 app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = 'Cindy1648'
 app.config['MYSQL_DB'] = 'campaigns'
+
+app.config['S3_BUCKET'] = "teleeza-pilot"
+app.config['S3_KEY'] = "AKIAWQ63TTT7NWIPJMMQ"
+app.config['S3_SECRET'] = "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"
+app.config['S3_LOCATION'] = 'https://s3.us-east-2.amazonaws.com/teleeza-pilot/'
 
 mysql = MySQL(app)
 
@@ -33,37 +37,36 @@ def file_upload():
         title = form['title']
         descriptions = form['descriptions']
         phone = form['phone']
+        bucket = 'teleeza-pilot'
+        content_type = request.mimetype
         audio = request.files['audio_url']
-
         if audio and allowed_file(audio.filename):
+            client = boto3.client('s3',
+                                  region_name='us-east-2',
+                                  endpoint_url='https://s3.us-east-2.amazonaws.com',
+                                  aws_access_key_id=app.config['S3_KEY'],
+                                  aws_secret_access_key=app.config['S3_SECRET'])
+
             filename = secure_filename(audio.filename)
-            audio_url = UPLOAD_FOLDER + filename
-            audio.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            client.put_object(Body=audio,
+                              Bucket=bucket,
+                              Key=filename,
+                              ContentType=content_type,
+                              ACL="public-read")
+
+            filename = app.config['S3_LOCATION'] + filename
             cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            cursor.execute('SELECT * FROM podcast WHERE phone = % s and audio_url = % s', (phone, audio_url))
+            cursor.execute('SELECT * FROM blogs WHERE phone = % s and thumbnail_url = % s', (phone, filename))
             account = cursor.fetchone()
             if account:
-                return 'The audio already exists'
-
-            if genre != 'News' and genre != 'Weather & Environment' and genre != 'Trends' and genre != 'Travel & Leisure' and \
-                    genre != 'Tech & Trends' and genre != 'Health & Neutrition' and genre != 'Food & Drinks' and genre != 'Fitness & Wellness' \
-                    and genre != 'Entertainment' and genre != 'Beauty & Fashion' and genre != 'Agriculture' and genre != 'Business' \
-                    and genre != 'Sports' and genre != 'Love & Relationship' and genre != 'Politics' and genre != 'Comedy':
-                return 'Please Select a genre'
-            elif age_group != 'under 18' and age_group != '18-24' and age_group != '25-30' and \
-                    age_group != '30-35' and age_group != '35-40' and age_group != '40-50' and \
-                    age_group != '50-60' and age_group != 'Above 60':
-                return 'Kindly select your age group'
-            elif not phone or not genre or not age_group or not title or not descriptions:
-                return 'please enter the necessary credentials'
-            cursor.execute('INSERT INTO podcast VALUES (NULL, % s, % s, % s, % s, % s, % s)',
-                           (phone, genre, age_group, title, descriptions, audio_url))
+                return 'The file already exists'
+            cursor.execute('INSERT INTO podcast (genre, age_group, title, descriptions, audio_url, phone)'
+                           ' VALUES (% s, % s, % s, % s, % s, % s)',
+                           (genre, age_group, title, descriptions, filename, phone))
             mysql.connection.commit()
-            return 'Congratulations, You have successfully added a file'
-
+            return 'podcast created successfully'
         else:
-            return 'Sorry, There was a problem in adding a file'
-
+            return 'System accepts only mp3'
     except Exception as e:
         print(e)
 
@@ -71,10 +74,11 @@ def file_upload():
 @app.route('/file_display', methods=['POST', 'GET'])
 def file_display():
     form = request.form
-    phone_no = form['phone_no']
-    if phone_no:
+    phone = form['phone']
+    if phone:
         cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute('SELECT * FROM users_post WHERE phone_no = % s', (phone_no,))
+        cursor.execute('SELECT title, descriptions ,genre, audio_url, created_on FROM podcast WHERE phone = %s and flag = 1',
+                       (phone,))
         account = cursor.fetchall()
         if account:
             return jsonify(account)
@@ -86,11 +90,14 @@ def file_display():
 def edit():
     form = request.form
     id = form['id']
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute('SELECT * FROM podcast WHERE id = % s', (id,))
-    data = cursor.fetchall()
-    if data:
-        return jsonify(data)
+    if id:
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute('SELECT * FROM podcast WHERE id = %s and flag = 1', (id,))
+        account = cursor.fetchall()
+        if account:
+            return jsonify(account)
+        else:
+            return jsonify({'message': 'The blog does not exist'})
 
 
 @app.route('/update', methods=['POST', 'GET'])
@@ -101,18 +108,40 @@ def update():
     title = form['title']
     descriptions = form['descriptions']
     id = form['id']
+    bucket = 'teleeza-pilot'
+    content_type = request.mimetype
     audio = request.files['audio_url']
-    if audio and allowed_file(audio.filename) and genre and age_group and title and descriptions:
+    if audio and allowed_file(audio.filename):
+        client = boto3.client('s3',
+                              region_name='us-east-2',
+                              endpoint_url='https://s3.us-east-2.amazonaws.com',
+                              aws_access_key_id=app.config['S3_KEY'],
+                              aws_secret_access_key=app.config['S3_SECRET'])
+
         filename = secure_filename(audio.filename)
-        audio_url = UPLOAD_FOLDER + filename
-        audio.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        client.put_object(Body=audio,
+                          Bucket=bucket,
+                          Key=filename,
+                          ContentType=content_type,
+                          ACL="public-read")
+
+        filename = app.config['S3_LOCATION'] + filename
         cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute('UPDATE podcast SET  genre = % s, age_group = % s, title = % s, descriptions = % s, audio_url '
-                       '= % s WHERE id = % s', (genre, age_group, title, descriptions, audio_url, id))
+                       '= % s, updated_on = NOW() WHERE id = % s', (genre, age_group, title, descriptions, filename, id))
         mysql.connection.commit()
         return 'Congratulations, You have successfully updated your file'
     else:
         return 'Sorry, Something went wrong'
+
+@app.route('/delete', methods=['POST', 'GET'])
+def delete():
+    id = request.form["id"]
+    if id:
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute('UPDATE podcast SET  flag = 0 WHERE id = % s', (id,))
+        mysql.connection.commit()
+        return 'The file is deleted successful'
 
 
 if __name__ == '__main__':

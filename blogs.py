@@ -1,10 +1,12 @@
+import boto3
 from flask import Flask, request, jsonify
 from flask_mysqldb import MySQL
 import MySQLdb.cursors
 import os
+
+from mysqlx import Auth
 from werkzeug.utils import secure_filename
 
-UPLOAD_FOLDER = 'C:/Users/KIM/PycharmProjects/podcast-api/files/'
 ALLOWED_EXTENSIONS = set(['jpg', 'png', 'jpeg'])
 
 
@@ -13,13 +15,17 @@ def allowed_file(filename):
 
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_ROOT'] = '3306'
 app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = 'Cindy1648'
 app.config['MYSQL_DB'] = 'campaigns'
+
+app.config['S3_BUCKET'] = "teleeza-pilot"
+app.config['S3_KEY'] = "AKIAWQ63TTT7NWIPJMMQ"
+app.config['S3_SECRET'] = "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"
+app.config['S3_LOCATION'] = 'https://s3.us-east-2.amazonaws.com/teleeza-pilot/'
 
 mysql = MySQL(app)
 
@@ -58,27 +64,36 @@ def add_blog():
         age_group = form['age_group']
         heading = form['heading']
         phone = form['phone']
-        # updated_on = form['updated_on']
+        bucket = 'teleeza-pilot'
+        content_type = request.mimetype
         thumbnail = request.files['thumbnail_url']
-
         if thumbnail and allowed_file(thumbnail.filename):
+            client = boto3.client('s3',
+                                  region_name='us-east-2',
+                                  endpoint_url='https://s3.us-east-2.amazonaws.com',
+                                  aws_access_key_id=app.config['S3_KEY'],
+                                  aws_secret_access_key=app.config['S3_SECRET'])
+
             filename = secure_filename(thumbnail.filename)
-            thumbnail_url = UPLOAD_FOLDER + filename
-            thumbnail.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            client.put_object(Body=thumbnail,
+                              Bucket=bucket,
+                              Key=filename,
+                              ContentType=content_type,
+                              ACL="public-read")
+
+            filename = app.config['S3_LOCATION'] + filename
             cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            cursor.execute('SELECT * FROM blogs WHERE phone = % s and thumbnail_url = % s', (phone, thumbnail_url))
+            cursor.execute('SELECT * FROM blogs WHERE phone = % s and thumbnail_url = % s', (phone, filename))
             account = cursor.fetchone()
             if account:
-                return 'The au already exists'
+                return 'The file already exists'
             cursor.execute('INSERT INTO blogs (genre, age_group, heading, thumbnail_url, phone)'
                            ' VALUES (% s, % s, % s, % s, % s)',
-                           (genre, age_group, heading, thumbnail_url, phone))
+                           (genre, age_group, heading, filename, phone))
             mysql.connection.commit()
             return 'Blog created successfully'
-
         else:
-            return 'Failed! Try again later'
-
+            return 'System accepts only jpg, png and jpeg'
     except Exception as e:
         print(e)
 
@@ -89,7 +104,8 @@ def blog_display():
     phone = form['phone']
     if phone:
         cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute('SELECT heading,genre, thumbnail_url, created_on FROM blogs WHERE phone = %s and flag = 1', (phone, ))
+        cursor.execute('SELECT heading,genre, thumbnail_url, created_on FROM blogs WHERE phone = %s and flag = 1',
+                       (phone,))
         account = cursor.fetchall()
         if account:
             return jsonify(account)
@@ -103,7 +119,7 @@ def edit():
     id = form['id']
     if id:
         cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute('SELECT * FROM blogs WHERE id = %s and flag = 1', (id, ))
+        cursor.execute('SELECT * FROM blogs WHERE id = %s and flag = 1', (id,))
         account = cursor.fetchall()
         if account:
             return jsonify(account)
@@ -118,14 +134,27 @@ def update():
     age_group = form['age_group']
     heading = form['heading']
     id = form['id']
+    bucket = 'teleeza-pilot'
+    content_type = request.mimetype
     thumbnail = request.files['thumbnail_url']
-    if thumbnail and allowed_file(thumbnail.filename) and genre and age_group and heading:
+    if thumbnail and allowed_file(thumbnail.filename):
+        client = boto3.client('s3',
+                              region_name='us-east-2',
+                              endpoint_url='https://s3.us-east-2.amazonaws.com',
+                              aws_access_key_id=app.config['S3_KEY'],
+                              aws_secret_access_key=app.config['S3_SECRET'])
+
         filename = secure_filename(thumbnail.filename)
-        thumbnail_url = UPLOAD_FOLDER + filename
-        thumbnail.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        client.put_object(Body=thumbnail,
+                          Bucket=bucket,
+                          Key=filename,
+                          ContentType=content_type,
+                          ACL="public-read")
+
+        filename = app.config['S3_LOCATION'] + filename
         cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cursor.execute('UPDATE blogs SET  genre = % s, age_group = % s, heading = % s, thumbnail_url '
-                       '= % s, updated_on = NOW() WHERE id = % s', (genre, age_group, heading, thumbnail_url, id))
+                       '= % s, updated_on = NOW() WHERE id = % s', (genre, age_group, heading, filename, id))
         mysql.connection.commit()
         return 'Congratulations, You have successfully updated your file'
     else:
